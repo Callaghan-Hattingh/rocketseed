@@ -1,6 +1,7 @@
 use actix_web::{post, web, HttpResponse, Responder};
 use kuchikiki::{parse_html, traits::TendrilSink};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 enum TransformType {
@@ -14,6 +15,25 @@ enum TransformType {
 struct TransformRequest {
     transform: TransformType,
     html: String,
+}
+
+impl TransformRequest {
+    fn validate(&self) -> Result<(), TransformError> {
+        if self.html.trim().is_empty() {
+            return Err(TransformError::ParseError(
+                "HTML input is empty".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Error, Debug)]
+enum TransformError {
+    #[error("Failed to parse HTML: {0}")]
+    ParseError(String),
+    #[error("Body tag not found")]
+    BodyNotFound,
 }
 
 fn set_case_text_nodes(node: &kuchikiki::NodeRef, case: &TransformType) {
@@ -33,32 +53,32 @@ fn set_case_text_nodes(node: &kuchikiki::NodeRef, case: &TransformType) {
     }
 }
 
-fn update_p_elements(html: &str, case: &TransformType) -> Result<String, String> {
+fn update_p_elements(html: &str, case: &TransformType) -> Result<String, TransformError> {
     // println!("html: {}", html);
-    let mut result_html = String::new();
+    let mut result_html = Vec::new();
     let document = parse_html().one(html);
 
     let p_elements = match document.select("p") {
         Ok(elements) => elements,
-        Err(_) => return Err("Failed to parse HTML".to_string()),
+        Err(_) => return Err(TransformError::ParseError("".to_string())),
     };
 
-    let binding = document
-        .select_first("body")
-        .expect("Body tag should exist"); // parse_html adds <html><head><body>
-    let body = binding.as_node();
+    let body = match document.select_first("body") {
+        Ok(binding) => binding,
+        Err(_) => return Err(TransformError::BodyNotFound),
+    };
 
     for p_element in p_elements {
         let as_node = p_element.as_node();
         set_case_text_nodes(as_node, case);
     }
 
-    for child in body.children() {
+    for child in body.as_node().children() {
         // println!("{}", child.to_string());
-        result_html += &child.to_string();
+        result_html.push(child.to_string());
     }
 
-    return Ok(result_html);
+    return Ok(result_html.join(""));
 }
 
 #[post("/transform")]
@@ -66,13 +86,19 @@ async fn transform_post(
     req: Result<web::Json<TransformRequest>, actix_web::Error>,
 ) -> impl Responder {
     match req {
-        Ok(json) => match update_p_elements(&json.html, &json.transform) {
-            Ok(is_valid) => HttpResponse::Ok().body(format!("{}", is_valid)),
-            Err(e) => {
-                println!("Error: {}", e);
-                HttpResponse::BadRequest().body(format!("Invalid html: {}", e))
+        Ok(json) => {
+            if let Err(e) = json.validate() {
+                // log validation error
+                return HttpResponse::BadRequest().body(format!("Invalid request: {}", e));
             }
-        },
+
+            match update_p_elements(&json.html, &json.transform) {
+                Ok(result) => HttpResponse::Ok().body(format!("{}", result)),
+                // log processing error
+                Err(e) => HttpResponse::BadRequest().body(format!("Invalid html: {}", e)),
+            }
+        }
+        // log request error
         Err(e) => HttpResponse::BadRequest().body(format!("Invalid request: {}", e)),
     }
 }
