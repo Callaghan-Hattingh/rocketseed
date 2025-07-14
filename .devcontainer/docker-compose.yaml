@@ -1,0 +1,9 @@
+services:
+  rust:
+    build:
+      context: ../.
+      dockerfile: .devcontainer/dockerfile
+    volumes:
+      - ../.:/workspace
+    ports:
+      - 8080:8080

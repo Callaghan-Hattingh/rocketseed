@@ -1,0 +1,13 @@
+[package]
+name = "rocketseed"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix-web = "4.11"
+kuchikiki = "0.8"
+serde = { version = "1.0", features = ["derive"] }
+
+
+html5ever = "0.27"
+markup5ever = "0.12"
