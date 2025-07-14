@@ -78,7 +78,7 @@ fn update_p_elements(html: &str, case: &TransformType) -> Result<String, Transfo
         result_html.push(child.to_string());
     }
 
-    return Ok(result_html.join(""));
+    Ok(result_html.join(""))
 }
 
 #[post("/transform")]
@@ -93,7 +93,7 @@ async fn transform_post(
             }
 
             match update_p_elements(&json.html, &json.transform) {
-                Ok(result) => HttpResponse::Ok().body(format!("{}", result)),
+                Ok(result) => HttpResponse::Ok().body(result.to_string()),
                 // log processing error
                 Err(e) => HttpResponse::BadRequest().body(format!("Invalid html: {}", e)),
             }
